@@ -1,12 +1,18 @@
 "use client"
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
+import { Toaster, toast } from 'react-hot-toast';
+import { useRouter } from 'next/navigation';
+import Loading from '@/app/_components/Loading';
 
 export default function AddUserForm() {
     const [token, setToken] = useState()
     const [company_id, setCompanyId] = useState()
     const [responsibility, setResponsibility] = useState([])
     const [roleOptions, setRoleOptions] = useState([])
+    const [errors, setErrors] = useState();
+    const [loading, setLoading] = useState(false)
+    const router = useRouter()
 
     const [userData, setuserData] = useState({
         name: '',
@@ -25,9 +31,12 @@ export default function AddUserForm() {
             const company_id = localStorage.getItem("company_id");
             setToken(token),
                 setCompanyId(company_id)
+            if (!token) {
+                router.push("/login"); // Redirect to login if no token
+            }
             try {
 
-
+                setLoading(true)
                 const { data } = await axios.get('http://13.210.33.250/api/user/dropdown-responsibility', {
                     headers: {
                         Accept: 'application/json',
@@ -60,6 +69,8 @@ export default function AddUserForm() {
             } catch (error) {
                 console.log(error);
 
+            } finally {
+                setLoading(false)
             }
         }
         fetchRole()
@@ -67,7 +78,7 @@ export default function AddUserForm() {
 
     const handleChange = (e) => {
         const { name, value, type, checked } = e.target;
-        console.log(type, checked, name, value);
+        // console.log(type, checked, name, value);
 
 
         if (type === 'checkbox') {
@@ -80,6 +91,7 @@ export default function AddUserForm() {
         } else {
             setuserData((prev) => ({ ...prev, [name]: value }));
         }
+        validateForm()
     };
 
     const handleFileChange = (e) => {
@@ -91,18 +103,66 @@ export default function AddUserForm() {
             }));
         }
     };
+    const isValidName = (name) => {
+        const nameRegex = /^[A-Za-z\s]+$/;
+        return name.trim() !== "" && nameRegex.test(name);
+    };
+    const isValidEmail = (email) => {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        return email.trim() !== "" && emailRegex.test(email);
+    };
+    // const isValidRole = (role) => {
+    //     return role.trim() !== "";
+    // };
+    const isValidPhoneNumber = (phone) => {
+        const phoneRegex = /^\d{9,14}$/;
+        return phone === "" || phoneRegex.test(phone);
+    };
+    const hasAtLeastOneResponsibility = (responsibilities) => {
+        return Array.isArray(responsibilities) && responsibilities.length > 0;
+    };
+
+    const validateForm = () => {
+        let newErrors = {};
+        if (!userData.name) {
+            newErrors.name = "name is required";
+        } else if (!isValidName(userData.name)) {
+            newErrors.name = "Name is required.", "or", "Name must contain only letters and spaces";
+        }
+        if (!userData.email) {
+            newErrors.email = "email is required"
+        } else if (!isValidEmail(userData.email)) {
+            newErrors.email = "Please enter a valid email address."
+        }
+        if (!userData.role) {
+            newErrors.role = "Role is required"
+        }
+        if (!userData.phone) {
+            newErrors.phone = "phone number required"
+        } else if (!isValidPhoneNumber(userData.phone)) {
+            newErrors.phone = "Phone number must contain only digits (10 to 15 digits)"
+        }
+        if (userData.responsibilities.length == 0) {
+            newErrors.responsibilities = "Please select at least one responsibility"
+        }
+        setErrors(newErrors)
+    }
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        validateForm();
+        if (Object.keys(errors || {}).length > 0) {
+            return;
+        }
 
         try {
             const formData = new FormData();
 
-            
-            formData.append('role', userData.role); 
-            formData.append('name', userData.name); 
-            formData.append('email', userData.email); 
-            formData.append('overwite_data', '1'); 
+
+            formData.append('role', userData.role);
+            formData.append('name', userData.name);
+            formData.append('email', userData.email);
+            formData.append('overwite_data', '1');
 
             // Optional fields
             if (userData.user_picture) {
@@ -130,29 +190,43 @@ export default function AddUserForm() {
             for (let pair of formData.entries()) {
                 console.log(pair[0], pair[1]);
             }
+            setLoading(true)
             const response = await axios.post('http://13.210.33.250/api/user', formData, {
                 headers: {
                     Accept: 'application/json',
                     company_id: company_id,
                     Authorization: `Bearer ${token}`,
-                  
+
                 }
             });
 
             console.log('Success:', response.data);
+            toast.success("Added successfully ")
+            router.push("/dashboard")
 
-           
+
 
         } catch (error) {
             console.error('❌ Submit Error:', error.response?.data || error.message);
+            toast.error("Email already exists")
+        } finally {
+            setLoading(false)
         }
     };
-    console.log(userData);
+    console.log(errors);
+
+    if (loading) {
+        return <Loading />
+    }
 
 
 
     return (
         <div className="min-h-screen bg-[#f8f9fc] p-6">
+            <Toaster
+                position="top-center"
+                reverseOrder={false}
+            />
             <div className="max-w-5xl mx-auto bg-white rounded-lg shadow-sm p-8">
                 <h2 className="text-2xl font-semibold text-gray-800 mb-6">Add New User</h2>
 
@@ -179,7 +253,7 @@ export default function AddUserForm() {
                 {/* Form */}
                 <form className="grid grid-cols-1 md:grid-cols-2 gap-6" onSubmit={handleSubmit}>
                     <div>
-                        <label className="block mb-1 font-medium text-gray-700">Name*</label>
+                        <label className="block mb-1 font-medium text-gray-700">Name *</label>
                         <input
                             name="name"
                             type="text"
@@ -189,10 +263,11 @@ export default function AddUserForm() {
                             className="w-full border rounded-md px-4 py-2"
                             required
                         />
+                        {errors?.name && <span className='text-red-600 text-xs font-light'>{errors.name}</span>}
                     </div>
 
                     <div>
-                        <label className="block mb-1 font-medium text-gray-700">Email*</label>
+                        <label className="block mb-1 font-medium text-gray-700">Email *</label>
                         <input
                             name="email"
                             type="email"
@@ -202,6 +277,7 @@ export default function AddUserForm() {
                             className="w-full border rounded-md px-4 py-2"
                             required
                         />
+                        {errors?.email && <span className='text-red-600 text-xs font-light'>{errors.email}</span>}
                     </div>
 
                     <div>
@@ -213,7 +289,9 @@ export default function AddUserForm() {
                             onChange={handleChange}
                             placeholder="Enter phone number"
                             className="w-full border rounded-md px-4 py-2"
+                            required
                         />
+                        {errors?.phone && <span className='text-red-600 text-xs font-light'>{errors.phone}</span>}
                     </div>
 
                     <div>
@@ -241,7 +319,7 @@ export default function AddUserForm() {
                     </div>
 
                     <div>
-                        <label className="block mb-1 font-medium text-gray-700">Role*</label>
+                        <label className="block mb-1 font-medium text-gray-700">Role *</label>
                         <select
                             name="role"
                             value={userData.role}
@@ -256,6 +334,7 @@ export default function AddUserForm() {
                                 </option>
                             ))}
                         </select>
+                        {errors?.role && <span className='text-red-600 text-xs font-light'>{errors.role}</span>}
                     </div>
 
                     <div className="md:col-span-2">
@@ -273,6 +352,7 @@ export default function AddUserForm() {
                                     <span>{item.title}</span>
                                 </label>
                             ))}
+                            {errors?.responsibilities && <span className='text-red-600 text-xs font-light'>{errors.responsibilities}</span>}
                         </div>
                     </div>
 

@@ -2,17 +2,22 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Toaster, toast } from 'react-hot-toast';
+import { FaRegTrashAlt } from "react-icons/fa";
 import axios from 'axios';
+import Loading from '@/app/_components/Loading';
 
 export default function EditUserPage() {
   const { id } = useParams();
   const router = useRouter();
+  const [responsibility, setResponsibility] = useState([])
+  const [roleOptions, setRoleOptions] = useState([])
   const [userData, setUserData] = useState({
     name: '',
     email: '',
     phone: '',
     title: '',
     initials: '',
+    newUser_picture: "",
     role: '',
     responsibilities: [],
     user_picture: null,
@@ -28,6 +33,9 @@ export default function EditUserPage() {
       const companyId = localStorage?.getItem("company_id");
       setToken(token)
       setCompanyId(companyId)
+      if (!token) {
+        router.push("/login"); // Redirect to login if no token
+      }
       try {
         const res = await axios.get(`http://13.210.33.250/api/user/${id}`, {
           headers: {
@@ -41,20 +49,49 @@ export default function EditUserPage() {
 
 
         setUserData({
+          id: u.id,
           name: u.first_name,
+          newUser_picture: '',
           email: u.email,
           phone: u.phone || '',
           title: u.title || '',
           initials: u.initials || '',
           role: u.role.id.toString(),
-          responsibilities: [],
+          responsibilities: [...u.responsibilities].toString(),
           user_picture: u.profile_image_url,
         });
 
-        setLoading(false);
+        const { data } = await axios.get('http://13.210.33.250/api/user/dropdown-responsibility', {
+          headers: {
+            Accept: 'application/json',
+            company_id: companyId,
+            Authorization: `Bearer ${token}`
+          }
+        });
+
+        console.log(data, "kkkkkkkkk");
+        setResponsibility(data)
+        const formData = new FormData();
+        formData.append('type', '0');
+        const response = await axios.post('http:///13.210.33.250/api/role/dropdown', formData, {
+          headers: {
+            Accept: 'application/json',
+            company_id: companyId,
+            Authorization: `Bearer ${token}`
+          }
+        });
+        const roles = response.data.data;
+        const roleList = Object.entries(roles).map(([title, id]) => ({
+          id,
+          title,
+        }));
+
+        setRoleOptions(roleList);
       } catch (err) {
         console.error(err);
         alert("Failed to fetch user");
+      } finally {
+        setLoading(false);
       }
     }
 
@@ -76,7 +113,8 @@ export default function EditUserPage() {
   const handleFileChange = (e) => {
     setUserData((prev) => ({
       ...prev,
-      user_picture: e.target.files[0],
+      newUser_picture: e.target.files[0],
+      user_picture: e.target.files[0]
     }));
   };
 
@@ -94,12 +132,16 @@ export default function EditUserPage() {
       form.append('role', userData.role);
       form.append('overwite_data', '1');
 
-      if (userData.user_picture) {
-        form.append('user_picture', userData.user_picture);
+      if (userData.newUser_picture) {
+        form.append('user_picture', userData.newUser_picture);
       }
 
 
-      userData.responsibilities.forEach((item) => form.append('responsibilities[]', item));
+      // userData.responsibilities.forEach((item) => form.append('responsibilities[]', item));
+      for (let pair of form.entries()) {
+        console.log(pair[0], pair[1]);
+      }
+      setLoading(true)
 
       await axios.post(`http://13.210.33.250/api/user/${id}`, form, {
         headers: {
@@ -111,13 +153,46 @@ export default function EditUserPage() {
 
       toast.success("User updated successfully!")
       router.push('/dashboard');
+
     } catch (err) {
       console.error(err);
       alert('Failed to update user');
     }
   };
 
-  if (loading) return <p className="p-4">Loading...</p>;
+  const deleteUserImage = async () => {
+    // try {
+
+    //   const response = await axios.delete(`http://13.210.33.250/api/user/${userData.id}/image`, {
+    //     headers: {
+    //       Authorization: `Bearer ${token}`,
+    //       Accept: "application/json",
+    //       company_id: companyId,
+    //     },
+    //   })
+    //   console.log(response);
+
+
+    // } catch (error) {
+    //   console.log(error);
+
+    // }
+    setUserData((prev) => {
+      return { ...prev, user_picture: null }
+    })
+    console.log(userData);
+
+  }
+
+  if (loading) return <>
+    <Loading />
+    <Toaster
+      position="top-center"
+      reverseOrder={false}
+    />
+  </>
+  console.log(userData);
+
 
   return (
     <div className="min-h-screen bg-[#f8f9fc] p-6">
@@ -131,6 +206,7 @@ export default function EditUserPage() {
         {/* Avatar */}
         <div className="flex justify-center mb-6">
           <div className="relative">
+            <span onClick={() => deleteUserImage()} className='absolute text-red-500 bg-red-100 -top-3 right-0 rounded-full p-2 cursor-pointe'><FaRegTrashAlt /></span>
             <img
               src={
                 userData.user_picture === null
@@ -143,6 +219,7 @@ export default function EditUserPage() {
               className="w-24 h-24 rounded-full border-2 border-blue-500 object-cover"
             />
             <label className="absolute bottom-0 right-0 bg-white p-1 rounded-full shadow cursor-pointer">
+
               <input
                 type="file"
                 accept="image/*"
@@ -226,25 +303,27 @@ export default function EditUserPage() {
               required
             >
               <option value="">Select role</option>
-              <option value="8">Admin</option>
-              <option value="9">Customer</option>
-              <option value="10">Developer</option>
+              {roleOptions.map((role) => (
+                <option key={role.id} value={role.id}>
+                  {role.title}
+                </option>
+              ))}
             </select>
           </div>
 
           <div className="md:col-span-2">
             <label className="block mb-2 font-medium text-gray-700">Responsibilities</label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {["Designer", "Project Manager", "Production Manager", "Sales Rep"].map((item) => (
-                <label key={item} className="flex items-center space-x-2 text-gray-700">
+              {responsibility?.map((item) => (
+                <label key={item.id} className="flex items-center space-x-2 text-gray-700">
                   <input
                     type="checkbox"
                     name="responsibilities"
-                    value={item}
-                    checked={userData.responsibilities.includes(item)}
+                    value={item.id}
+                    checked={userData.responsibilities.includes(item.id.toString())}
                     onChange={handleChange}
                   />
-                  <span>{item}</span>
+                  <span>{item.title}</span>
                 </label>
               ))}
             </div>
